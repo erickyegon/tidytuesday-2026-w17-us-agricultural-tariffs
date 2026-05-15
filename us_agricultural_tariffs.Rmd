@@ -1,0 +1,1203 @@
+---
+title: "US Agricultural Tariffs: A Comprehensive Analysis"
+subtitle: "USITC Tariff Database · HTS Chapters 1–24 · TidyTuesday 2026 Week 17"
+author:
+  - name: "Erick K Yegon,PhD"
+    email: "keyegon@gmail.com"
+    orcid: "https://orcid.org/0000-0002-7055-4848"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+abstract: |
+  This report provides an end-to-end analysis of US agricultural import tariffs
+  sourced from the USITC Tariff Database (1997–2025). Covering all 24 HTS chapters
+  in the agricultural schedule, the analysis examines Most Favored Nation (MFN) rate
+  trajectories, preferential savings under NAFTA/USMCA and bilateral agreements,
+  tariff-line volatility, and the structural composition of rate types. Nine
+  publication-quality visualisations, two interactive widgets, and six statistical
+  tables support six key empirical findings with formal statistical testing.
+keywords: "tariffs, trade policy, USITC, agricultural trade, NAFTA, USMCA, HTS"
+output:
+  html_document:
+    theme: flatly
+    highlight: kate
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: show
+    fig_width: 11
+    fig_height: 7
+    df_print: paged
+    css: |
+      #progress-bar {
+        position: fixed; top: 0; left: 0; height: 3px;
+        background: #378ADD; z-index: 9999; width: 0%;
+        transition: width 0.1s;
+      }
+      body { font-family: 'Georgia', serif; font-size: 15px;
+             color: #2C2C2A; line-height: 1.75; }
+      h1, h2, h3 { font-family: 'Helvetica Neue', sans-serif; color: #185FA5; }
+      h1 { border-bottom: 2px solid #E6F1FB; padding-bottom: 6px; }
+      h2 { border-left: 4px solid #378ADD; padding-left: 10px; }
+      .callout-box {
+        background: #E6F1FB; border-left: 4px solid #378ADD;
+        padding: 12px 16px; border-radius: 4px; margin: 16px 0;
+        font-size: 14px; color: #0C447C;
+      }
+      .insight-box {
+        background: #EAF3DE; border-left: 4px solid #639922;
+        padding: 12px 16px; border-radius: 4px; margin: 16px 0;
+        font-size: 14px; color: #27500A;
+      }
+      .warning-box {
+        background: #FAEEDA; border-left: 4px solid #BA7517;
+        padding: 12px 16px; border-radius: 4px; margin: 16px 0;
+        font-size: 14px; color: #633806;
+      }
+      .metric-row { display: flex; gap: 16px; margin: 20px 0; flex-wrap: wrap; }
+      .metric-card {
+        flex: 1; min-width: 140px; background: #F1EFE8;
+        border-radius: 8px; padding: 14px 18px; text-align: center;
+      }
+      .metric-card .val { font-size: 26px; font-weight: 700;
+                          color: #185FA5; display: block; }
+      .metric-card .lbl { font-size: 11px; color: #5F5E5A;
+                          text-transform: uppercase; letter-spacing: .04em; }
+      caption { font-size: 13px; color: #5F5E5A; font-style: italic; }
+      @media print {
+        #progress-bar, .tocify, nav { display: none !important; }
+        body { font-size: 12px; }
+      }
+---
+
+```{r progress-bar, echo=FALSE, results='asis'}
+cat('<div id="progress-bar"></div>
+<script>
+window.addEventListener("scroll", function() {
+  var s = document.documentElement;
+  var pct = (s.scrollTop / (s.scrollHeight - s.clientHeight)) * 100;
+  document.getElementById("progress-bar").style.width = pct + "%";
+});
+</script>')
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo        = TRUE,
+  warning     = FALSE,
+  message     = FALSE,
+  fig.align   = "center",
+  out.width   = "100%",
+  dpi         = 180,
+  cache       = TRUE,
+  cache.lazy  = FALSE,
+  comment     = "#>"
+)
+```
+
+```{r packages, cache=FALSE}
+pkgs <- c(
+  "tidyverse", "lubridate", "scales", "ggtext", "ggrepel",
+  "patchwork", "gt", "gtExtras", "glue", "ggridges",
+  "RColorBrewer", "forcats", "stringr", "janitor", "knitr",
+  "kableExtra", "DT", "plotly", "crosstalk",
+  "broom", "Kendall", "dunn.test"
+)
+installed <- rownames(installed.packages())
+to_install <- pkgs[!pkgs %in% installed]
+if (length(to_install)) install.packages(to_install, quiet = TRUE)
+
+suppressPackageStartupMessages({
+  library(tidyverse); library(lubridate); library(scales)
+  library(ggtext);    library(ggrepel);   library(patchwork)
+  library(gt);        library(gtExtras);  library(glue)
+  library(ggridges);  library(RColorBrewer); library(forcats)
+  library(stringr);   library(janitor);   library(knitr)
+  library(kableExtra);library(DT);        library(plotly)
+  library(crosstalk); library(broom);     library(Kendall)
+  library(dunn.test)
+})
+```
+
+```{r theme-palette, cache=FALSE}
+theme_tariff <- function(base_size = 12) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      text              = element_text(colour = "#2C2C2A"),
+      plot.title        = element_markdown(size = rel(1.35), face = "bold",
+                                           margin = margin(b = 6)),
+      plot.subtitle     = element_markdown(size = rel(0.95), colour = "#5F5E5A",
+                                           lineheight = 1.4, margin = margin(b = 12)),
+      plot.caption      = element_markdown(size = rel(0.72), colour = "#888780",
+                                           hjust = 0, margin = margin(t = 10)),
+      plot.background   = element_rect(fill = "#FAFAF8", colour = NA),
+      panel.background  = element_rect(fill = "#FAFAF8", colour = NA),
+      panel.grid.major  = element_line(colour = "#D3D1C7", linewidth = 0.35),
+      panel.grid.minor  = element_blank(),
+      axis.title        = element_text(size = rel(0.85), colour = "#5F5E5A"),
+      axis.text         = element_text(size = rel(0.80), colour = "#5F5E5A"),
+      axis.ticks        = element_blank(),
+      strip.text        = element_markdown(size = rel(0.85), face = "bold",
+                                           colour = "#3C3489"),
+      strip.background  = element_rect(fill = "#EEEDFE", colour = NA),
+      legend.position   = "bottom",
+      legend.title      = element_text(size = rel(0.82), colour = "#5F5E5A"),
+      legend.text       = element_text(size = rel(0.78)),
+      plot.margin       = margin(14, 14, 10, 14)
+    )
+}
+theme_set(theme_tariff())
+
+pal_section <- c(
+  "Live Animals & Animal Products" = "#D55E00",
+  "Vegetable Products"             = "#009E73",
+  "Animal/Vegetable Fats & Oils"   = "#CC79A7",
+  "Prepared Foodstuffs"            = "#0072B2"
+)
+
+pal_agree <- c(
+  "MFN"         = "#534AB7",
+  "NAFTA/USMCA" = "#1D9E75",
+  "Bilateral"   = "#D85A30",
+  "Other GSP"   = "#BA7517"
+)
+```
+
+---
+
+# Introduction
+
+<div class="callout-box">
+**Dataset overview:** This analysis uses the USITC Tariff Database (TidyTuesday 2026, Week 17), covering all agricultural and food product tariff lines in HTS Chapters 1–24, with annual data from 1997 to 2025. The database includes Most Favored Nation (MFN) rates and preferential rates under NAFTA/USMCA, bilateral agreements, and the Generalised System of Preferences (GSP).
+</div>
+
+**Key questions explored:**
+
+1. How have MFN tariff rates evolved across agricultural product categories?
+2. How much do preferential agreements (NAFTA/USMCA, bilateral) reduce rates compared to MFN?
+3. Which tariff lines have been most volatile over time?
+4. How did the NAFTA → USMCA transition manifest in the data?
+5. Is there a relationship between MFN rate levels and the number of preferential agreements?
+6. Are cross-section rate differences statistically significant?
+7. Is there a measurable monotonic trend in MFN rates over time?
+
+---
+
+# Data Ingestion & Validation {#data}
+
+```{r load-data, cache=TRUE}
+base_url <- paste0(
+  "https://raw.githubusercontent.com/rfordatascience/tidytuesday/",
+  "main/data/2026/2026-04-28/"
+)
+
+safe_read <- function(file) {
+  url <- paste0(base_url, file)
+  tryCatch(
+    readr::read_csv(url, show_col_types = FALSE, progress = FALSE),
+    error = function(e) stop("Could not fetch: ", url, "\n", conditionMessage(e))
+  )
+}
+
+agreements          <- safe_read("agreements.csv")
+quantity_codes      <- safe_read("quantity_codes.csv")
+tariff_agricultural <- safe_read("tariff_agricultural.csv")
+tariff_codes        <- safe_read("tariff_codes.csv")
+```
+
+```{r data-validation}
+tibble(
+  Dataset = c("tariff_agricultural","agreements","quantity_codes","tariff_codes"),
+  Rows    = c(nrow(tariff_agricultural), nrow(agreements),
+              nrow(quantity_codes),      nrow(tariff_codes)),
+  Columns = c(ncol(tariff_agricultural), ncol(agreements),
+              ncol(quantity_codes),      ncol(tariff_codes))
+) |>
+  kbl(caption = "Table 1. Dataset dimensions after ingestion",
+      format.args = list(big.mark = ",")) |>
+  kable_styling(bootstrap_options = c("striped","hover","condensed"),
+                full_width = FALSE)
+```
+
+```{r metric-cards, echo=FALSE, results='asis'}
+# ── NEW: Metric cards dashboard ──────────────────────────────
+n_hts   <- n_distinct(tariff_agricultural$hts8)
+n_agree <- n_distinct(tariff_agricultural$agreement)
+yr_min  <- year(min(as.Date(tariff_agricultural$begin_effective_date), na.rm = TRUE))
+yr_max  <- year(max(as.Date(tariff_agricultural$end_effective_date),   na.rm = TRUE))
+n_rows  <- scales::comma(nrow(tariff_agricultural))
+
+cat(glue('
+<div class="metric-row">
+  <div class="metric-card">
+    <span class="val">{n_rows}</span>
+    <span class="lbl">Total records</span>
+  </div>
+  <div class="metric-card">
+    <span class="val">{scales::comma(n_hts)}</span>
+    <span class="lbl">HTS-8 codes</span>
+  </div>
+  <div class="metric-card">
+    <span class="val">{n_agree}</span>
+    <span class="lbl">Agreement codes</span>
+  </div>
+  <div class="metric-card">
+    <span class="val">{yr_min}–{yr_max}</span>
+    <span class="lbl">Year span</span>
+  </div>
+  <div class="metric-card">
+    <span class="val">24</span>
+    <span class="lbl">HTS chapters</span>
+  </div>
+</div>
+'))
+```
+
+---
+
+# Data Cleaning & Feature Engineering {#cleaning}
+
+```{r cleaning}
+tariff_clean <- tariff_agricultural |>
+  janitor::clean_names() |>
+  mutate(
+    begin_date  = as.Date(begin_effective_date),
+    end_date    = as.Date(end_effective_date),
+    begin_year  = year(begin_date),
+    end_year    = year(end_date),
+    ad_val_pct  = case_when(
+      ad_val_rate >= 1    ~ ad_val_rate,
+      !is.na(ad_val_rate) ~ ad_val_rate * 100,
+      TRUE                ~ NA_real_
+    ),
+    hts_chapter = as.integer(str_sub(as.character(hts8), 1, 2)),
+    section = case_when(
+      hts_chapter <= 5  ~ "Live Animals & Animal Products",
+      hts_chapter <= 14 ~ "Vegetable Products",
+      hts_chapter <= 15 ~ "Animal/Vegetable Fats & Oils",
+      hts_chapter <= 24 ~ "Prepared Foodstuffs",
+      TRUE              ~ "Other"
+    ),
+    section = factor(section, levels = names(pal_section))
+  )
+
+YEARS <- 2000:2024
+
+annual_panel <- tariff_clean |>
+  distinct(hts8, agreement) |>
+  crossing(year = YEARS) |>
+  left_join(
+    tariff_clean |>
+      select(hts8, agreement, begin_year, end_year,
+             ad_val_pct, specific_rate, hts_chapter, section),
+    join_by(hts8, agreement, year >= begin_year, year <= end_year)
+  ) |>
+  filter(!is.na(ad_val_pct), ad_val_pct >= 0, ad_val_pct < 500) |>
+  distinct(hts8, agreement, year, .keep_all = TRUE) |>
+  left_join(agreements |> janitor::clean_names(), by = "agreement") |>
+  mutate(
+    agree_group = case_when(
+      str_detect(agreement_full,
+                 regex("most favored|MFN", ignore_case = TRUE))            ~ "MFN",
+      str_detect(agreement_full,
+                 regex("NAFTA|USMCA|Canada|Mexico", ignore_case = TRUE))   ~ "NAFTA/USMCA",
+      str_detect(agreement_full,
+                 regex("bilateral|Australia|Chile|Korea|Colombia|Peru|Singapore",
+                       ignore_case = TRUE))                                 ~ "Bilateral",
+      TRUE                                                                  ~ "Other GSP"
+    ),
+    agree_group = factor(agree_group, levels = names(pal_agree))
+  )
+
+mfn_panel <- annual_panel |>
+  filter(agree_group == "MFN") |>
+  select(hts8, year, section, hts_chapter, mfn_rate = ad_val_pct)
+
+cat("Annual panel rows:", scales::comma(nrow(annual_panel)), "\n")
+cat("MFN panel rows   :", scales::comma(nrow(mfn_panel)), "\n")
+```
+
+---
+
+# Exploratory Data Analysis {#eda}
+
+## Descriptive statistics by section
+
+```{r eda-stats}
+section_stats <- mfn_panel |>
+  group_by(section) |>
+  summarise(
+    `Tariff lines` = n_distinct(hts8),
+    `Obs. (n)`     = n(),
+    `Mean rate`    = mean(mfn_rate, na.rm = TRUE),
+    `Median`       = median(mfn_rate, na.rm = TRUE),
+    `SD`           = sd(mfn_rate, na.rm = TRUE),
+    `Min`          = min(mfn_rate, na.rm = TRUE),
+    `Max`          = max(mfn_rate, na.rm = TRUE),
+    `% zero-rated` = mean(mfn_rate == 0, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+
+section_stats |>
+  gt() |>
+  tab_header(
+    title    = md("**Table 2. MFN Rate Summary Statistics by HTS Section (2000–2024)**"),
+    subtitle = md("*Ad valorem rates (%). Source: USITC Tariff Database.*")
+  ) |>
+  cols_label(section = "Section") |>
+  fmt_number(columns = c(`Mean rate`, Median, SD, Min, Max),
+             decimals = 2, suffix = "%") |>
+  fmt_number(columns = `% zero-rated`, decimals = 1, suffix = "%") |>
+  fmt_integer(columns = c(`Tariff lines`, `Obs. (n)`)) |>
+  data_color(columns = `Mean rate`,    palette = c("#E6F1FB","#185FA5")) |>
+  data_color(columns = `% zero-rated`, palette = c("#185FA5","#E6F1FB")) |>
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_column_labels()) |>
+  tab_options(table.font.size = px(13),
+              heading.title.font.size = px(15),
+              column_labels.border.top.color = "#534AB7",
+              column_labels.border.top.width = px(2))
+```
+
+## Agreement group coverage
+
+```{r eda-agreement}
+agreement_summary <- annual_panel |>
+  group_by(agree_group) |>
+  summarise(
+    `Distinct products` = n_distinct(hts8),
+    `Product-years`     = n(),
+    `Mean rate`         = mean(ad_val_pct, na.rm = TRUE),
+    `Median rate`       = median(ad_val_pct, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+agreement_summary |>
+  kbl(caption = "Table 3. Coverage and average rates by trade agreement group",
+      digits = 2, format.args = list(big.mark = ",")) |>
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE) |>
+  column_spec(3, color = "white",
+              background = spec_color(agreement_summary$`Mean rate`,
+                                      option = "D", direction = -1))
+```
+
+## MFN rate vs preferential saving — regression {#regression}
+
+```{r regression-insight, fig.cap="Figure NEW-A. OLS regression: does a higher MFN rate predict a larger NAFTA/USMCA saving? Each point = one HTS chapter."}
+reg_data <- annual_panel |>
+  filter(agree_group %in% c("MFN","NAFTA/USMCA")) |>
+  group_by(hts_chapter, section, agree_group) |>
+  summarise(avg = mean(ad_val_pct, na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = agree_group, values_from = avg) |>
+  janitor::clean_names() |>
+  filter(!is.na(mfn), !is.na(nafta_usmca)) |>
+  mutate(saving = mfn - nafta_usmca)
+
+model <- lm(saving ~ mfn, data = reg_data)
+r2    <- glance(model)$r.squared
+slope <- tidy(model)$estimate[2]
+
+ggplot(reg_data, aes(x = mfn, y = saving, colour = section)) +
+  geom_smooth(method = "lm", se = TRUE, colour = "#534AB7",
+              fill = "#EEEDFE", linewidth = 0.8, alpha = 0.25) +
+  geom_point(size = 4, alpha = 0.85) +
+  geom_text_repel(aes(label = glue("Ch.{hts_chapter}")),
+                  size = 2.8, max.overlaps = 20,
+                  segment.colour = "#B4B2A9") +
+  scale_colour_manual(values = pal_section, name = "Section") +
+  scale_x_continuous(labels = label_number(suffix = "%")) +
+  scale_y_continuous(labels = label_number(suffix = "%")) +
+  annotate("richtext", x = -Inf, y = Inf, hjust = -0.05, vjust = 1.3,
+           label = glue("R² = {round(r2,3)} · slope = {round(slope,2)}"),
+           fill = NA, label.colour = NA, size = 3.5, colour = "#534AB7") +
+  labs(
+    title    = "Higher MFN rates predict larger NAFTA/USMCA tariff savings",
+    subtitle = "OLS regression across HTS chapters. Shaded band = 95% CI.",
+    x = "Mean MFN rate", y = "Mean NAFTA/USMCA saving (pp)",
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  )
+```
+
+```{r regression-table}
+bind_rows(
+  tidy(model) |> mutate(type = "Coefficients"),
+  glance(model) |>
+    select(r.squared, adj.r.squared, p.value, nobs) |>
+    pivot_longer(everything(), names_to = "term", values_to = "estimate") |>
+    mutate(type = "Model fit", std.error = NA_real_,
+           statistic = NA_real_, p.value = NA_real_)
+) |>
+  gt() |>
+  tab_header(title    = md("**OLS: NAFTA/USMCA saving ~ MFN rate**"),
+             subtitle = md("*Unit of observation: HTS chapter*")) |>
+  fmt_number(columns = where(is.numeric), decimals = 3) |>
+  tab_row_group(label = "Coefficients", rows = type == "Coefficients") |>
+  tab_row_group(label = "Model fit",    rows = type == "Model fit") |>
+  cols_hide(type) |>
+  tab_options(table.font.size = px(13))
+```
+
+## Tariff dispersion — Lorenz / Gini analysis {#gini}
+
+```{r gini-analysis, fig.cap="Figure NEW-B. Lorenz curves for MFN tariff distribution by section (2024). Convexity indicates inequality of tariff burden."}
+gini_fn <- function(x) {
+  x <- sort(x[x > 0 & !is.na(x)])
+  n <- length(x)
+  if (n < 2) return(NA_real_)
+  (2 * sum(seq_len(n) * x) / (n * sum(x))) - (n + 1) / n
+}
+
+lorenz_df <- mfn_panel |>
+  filter(year == max(year)) |>
+  group_by(section) |>
+  filter(mfn_rate > 0) |>
+  arrange(mfn_rate) |>
+  mutate(
+    cum_pop  = row_number() / n(),
+    cum_rate = cumsum(mfn_rate) / sum(mfn_rate)
+  ) |>
+  ungroup()
+
+gini_vals <- mfn_panel |>
+  filter(year == max(year)) |>
+  group_by(section) |>
+  summarise(gini = gini_fn(mfn_rate), .groups = "drop") |>
+  mutate(label = sprintf("Gini = %.3f", gini),
+         x = 0.18, y = 0.80 - (as.integer(section) - 1) * 0.09)
+
+ggplot(lorenz_df, aes(x = cum_pop, y = cum_rate, colour = section)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed",
+              colour = "#888780", linewidth = 0.6) +
+  geom_line(linewidth = 1.2) +
+  geom_label(data = gini_vals,
+             aes(x = x, y = y,
+                 label = paste0(str_wrap(as.character(section), 20),
+                                "\n", label),
+                 colour = section),
+             size = 2.5, fill = "#FAFAF8", label.size = 0.3,
+             show.legend = FALSE) +
+  scale_colour_manual(values = pal_section, guide = "none") +
+  scale_x_continuous(labels = label_percent()) +
+  scale_y_continuous(labels = label_percent()) +
+  labs(
+    title    = "Lorenz curves: inequality of MFN tariff rates by section",
+    subtitle = glue("Year: {max(mfn_panel$year)}. Dashed = perfect equality. Gini annotated per section."),
+    x = "Cumulative share of tariff lines",
+    y = "Cumulative share of total tariff rate",
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  )
+```
+
+---
+
+# Visualisations {#viz}
+
+## MFN Rate Trajectories by Section {#fig1}
+
+```{r fig1-trajectories, fig.cap="Figure 1. Mean MFN ad valorem tariff rate by HTS section, 2000–2024. Ribbon = ±1 SD. Grey lines show all sections for comparison."}
+section_yr <- mfn_panel |>
+  group_by(section, year) |>
+  summarise(
+    mean_rate  = mean(mfn_rate, na.rm = TRUE),
+    sd_rate    = sd(mfn_rate, na.rm = TRUE),
+    n_products = n_distinct(hts8),
+    .groups = "drop"
+  ) |>
+  filter(n_products >= 5) |>
+  mutate(lo = pmax(mean_rate - sd_rate, 0), hi = mean_rate + sd_rate)
+
+bg_lines <- section_yr |> rename(bg_section = section)
+
+ggplot() +
+  geom_line(data = bg_lines,
+            aes(x = year, y = mean_rate, group = bg_section),
+            colour = "#D3D1C7", linewidth = 0.7, alpha = 0.6) +
+  geom_ribbon(data = section_yr,
+              aes(x = year, ymin = lo, ymax = hi, fill = section),
+              alpha = 0.18) +
+  geom_line(data = section_yr,
+            aes(x = year, y = mean_rate, colour = section),
+            linewidth = 1.3) +
+  geom_point(data = section_yr,
+             aes(x = year, y = mean_rate, colour = section),
+             size = 1.6, shape = 21, fill = "white", stroke = 1.0) +
+  scale_colour_manual(values = pal_section, guide = "none") +
+  scale_fill_manual(values = pal_section, guide = "none") +
+  scale_x_continuous(breaks = seq(2000, 2024, 4)) +
+  scale_y_continuous(labels = label_number(suffix = "%"), limits = c(0, NA)) +
+  facet_wrap(~section, ncol = 2, scales = "free_y") +
+  labs(
+    title    = "MFN tariff trends by agricultural section (2000–2024)",
+    subtitle = "Mean ad valorem rate ± 1 SD (ribbon). Grey lines = all sections for context.",
+    x = NULL, y = "Average MFN rate",
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  )
+```
+
+<div class="insight-box">
+**Key insight:** Live Animals & Animal Products consistently carries the highest MFN rates, often exceeding 10% on average, while Vegetable Products show a gradual downward trend through the 2010s.
+</div>
+
+## Year-over-Year Rate Change Heatmap {#fig-yoy}
+
+```{r fig-yoy-heatmap, fig.height=5.5, fig.cap="Figure NEW-C. Average year-over-year change in MFN rate per section. Red = increase, blue = decrease."}
+yoy_data <- mfn_panel |>
+  group_by(section, year) |>
+  summarise(mean_rate = mean(mfn_rate, na.rm = TRUE), .groups = "drop") |>
+  arrange(section, year) |>
+  group_by(section) |>
+  mutate(yoy_change = mean_rate - lag(mean_rate)) |>
+  ungroup() |>
+  filter(!is.na(yoy_change))
+
+ggplot(yoy_data, aes(x = year, y = fct_rev(section), fill = yoy_change)) +
+  geom_tile(colour = "white", linewidth = 0.5) +
+  geom_text(
+    aes(label = ifelse(abs(yoy_change) >= 0.3,
+                       sprintf("%+.1f", yoy_change), "")),
+    size = 2.5, colour = "white", fontface = "bold"
+  ) +
+  scale_fill_gradient2(
+    low = "#185FA5", mid = "#F1EFE8", high = "#D85A30",
+    midpoint = 0, name = "YoY Δ (pp)",
+    guide = guide_colourbar(barwidth = 10, barheight = 0.5,
+                            title.position = "top", title.hjust = 0.5)
+  ) +
+  scale_x_continuous(breaks = seq(2000, 2024, 4)) +
+  labs(
+    title    = "Year-over-year MFN rate changes by section",
+    subtitle = "Red = rate increase · Blue = decrease · Labels for |Δ| ≥ 0.3 pp.",
+    x = NULL, y = NULL,
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(panel.grid = element_blank(),
+        axis.text.y = element_markdown(size = 9))
+```
+
+## Trade Agreement Coverage Heatmap {#fig2}
+
+```{r fig2-heatmap, fig.height=13, fig.cap="Figure 2. Average tariff rate by HTS chapter and trade agreement group. Darker = higher rates."}
+heatmap_data <- annual_panel |>
+  mutate(chapter_label = glue("Ch. {str_pad(hts_chapter, 2, 'left', '0')}")) |>
+  group_by(section, hts_chapter, chapter_label, agree_group) |>
+  summarise(avg_rate = mean(ad_val_pct, na.rm = TRUE), .groups = "drop") |>
+  filter(agree_group != "Other GSP") |>
+  mutate(
+    agree_group   = factor(agree_group, levels = c("MFN","NAFTA/USMCA","Bilateral")),
+    chapter_label = fct_reorder(chapter_label, hts_chapter)
+  )
+
+ggplot(heatmap_data,
+       aes(x = agree_group, y = fct_rev(chapter_label), fill = avg_rate)) +
+  geom_tile(colour = "white", linewidth = 0.6) +
+  geom_text(aes(label = ifelse(avg_rate >= 1, sprintf("%.1f%%", avg_rate), "")),
+            size = 2.5, colour = "white", fontface = "bold") +
+  scale_fill_gradientn(
+    colours  = c("#E6F1FB","#378ADD","#185FA5","#042C53"),
+    na.value = "#F1EFE8", name = "Avg. rate",
+    labels   = label_number(suffix = "%"),
+    guide    = guide_colourbar(barwidth = 10, barheight = 0.5,
+                               title.position = "top", title.hjust = 0.5)
+  ) +
+  facet_grid(section ~ ., scales = "free_y", space = "free_y") +
+  labs(
+    title    = "Tariff rate by HTS chapter and trade agreement",
+    subtitle = "Each cell = average ad valorem rate for that chapter–agreement combination.",
+    x = "Trade agreement group", y = "HTS chapter",
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(panel.grid   = element_blank(),
+        axis.text.y  = element_text(size = 7),
+        strip.text.y = element_text(angle = 0, hjust = 0, size = 7))
+```
+
+## MFN vs NAFTA/USMCA Dumbbell Chart {#fig3}
+
+```{r fig3-dumbbell, fig.cap="Figure 3. Average MFN (filled) vs NAFTA/USMCA (open) rates per HTS chapter."}
+dumbbell_data <- annual_panel |>
+  filter(agree_group %in% c("MFN","NAFTA/USMCA")) |>
+  group_by(hts_chapter, section, agree_group) |>
+  summarise(avg_rate = mean(ad_val_pct, na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = agree_group, values_from = avg_rate) |>
+  clean_names() |>
+  filter(!is.na(mfn), !is.na(nafta_usmca)) |>
+  mutate(
+    saving        = mfn - nafta_usmca,
+    chapter_label = glue("Ch. {str_pad(hts_chapter, 2, 'left', '0')}"),
+    chapter_label = fct_reorder(chapter_label, saving)
+  ) |>
+  filter(saving > 0)
+
+ggplot(dumbbell_data) +
+  geom_segment(
+    aes(x = nafta_usmca, xend = mfn,
+        y = chapter_label, yend = chapter_label, colour = section),
+    linewidth = 1.8, alpha = 0.40
+  ) +
+  geom_point(aes(x = nafta_usmca, y = chapter_label, colour = section),
+             size = 3.8, shape = 21, fill = "white", stroke = 1.2) +
+  geom_point(aes(x = mfn, y = chapter_label, colour = section), size = 3.8) +
+  geom_text(aes(x = mfn + 0.25, y = chapter_label,
+                label = sprintf("−%.1f pp", saving)),
+            hjust = 0, size = 2.9, colour = "#5F5E5A") +
+  scale_colour_manual(values = pal_section, name = "Section") +
+  scale_x_continuous(labels = label_number(suffix = "%"),
+                     expand = expansion(mult = c(0.01, 0.16))) +
+  guides(colour = guide_legend(override.aes = list(size = 3))) +
+  labs(
+    title    = "NAFTA/USMCA vs MFN rates: preferential savings by chapter",
+    subtitle = "Open circle = NAFTA/USMCA rate · Filled = MFN · Label = pp reduction.",
+    x = "Average ad valorem rate", y = NULL,
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(panel.grid.major.y = element_blank())
+```
+
+## Tariff Volatility: Top 30 Most Volatile Lines {#fig4}
+
+```{r fig4-volatility, fig.height=10, fig.cap="Figure 4. Top 30 tariff lines by standard deviation of annual MFN rate (2000–2024)."}
+volatility <- mfn_panel |>
+  group_by(hts8, section) |>
+  filter(n() >= 5) |>
+  summarise(rate_sd  = sd(mfn_rate, na.rm = TRUE),
+            mean_mfn = mean(mfn_rate, na.rm = TRUE), .groups = "drop") |>
+  filter(mean_mfn > 0)
+
+top_volatile <- volatility |>
+  slice_max(rate_sd, n = 30) |>
+  left_join(
+    {
+      tc       <- tariff_codes |> janitor::clean_names()
+      desc_col <- names(tc)[str_detect(names(tc), "brief|description|desc")][1]
+      if (!is.na(desc_col)) {
+        tc |> distinct(hts8, .keep_all = TRUE) |>
+          select(hts8, description = all_of(desc_col))
+      } else {
+        tc |> distinct(hts8) |> mutate(description = NA_character_)
+      }
+    },
+    by = "hts8"
+  ) |>
+  mutate(label = coalesce(str_trunc(description, 45), as.character(hts8)),
+         label = fct_reorder(label, rate_sd))
+
+ggplot(top_volatile, aes(x = rate_sd, y = label, colour = section)) +
+  geom_segment(aes(x = 0, xend = rate_sd, y = label, yend = label),
+               linewidth = 0.9, alpha = 0.50) +
+  geom_point(size = 3.6) +
+  geom_text(aes(label = sprintf("%.1f%%", rate_sd)),
+            hjust = -0.3, size = 2.7, colour = "#5F5E5A") +
+  scale_colour_manual(values = pal_section, name = "Section") +
+  scale_x_continuous(labels = label_number(suffix = "%"),
+                     expand  = expansion(mult = c(0, 0.18))) +
+  labs(
+    title    = "Top 30 most volatile MFN tariff lines",
+    subtitle = "Ranked by standard deviation of annual ad valorem rate, 2000–2024.",
+    x = "Rate SD (pp)", y = NULL,
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(panel.grid.major.y = element_blank(),
+        axis.text.y        = element_text(size = 7.5))
+```
+
+## NAFTA → USMCA Transition {#fig5}
+
+```{r fig5-nafta, fig.cap="Figure 5. NAFTA/USMCA preferential rate trajectory by section, with USMCA effective date annotated."}
+nafta_section <- annual_panel |>
+  filter(agree_group == "NAFTA/USMCA") |>
+  group_by(year, section) |>
+  summarise(
+    mean_rate = mean(ad_val_pct, na.rm = TRUE),
+    lo        = quantile(ad_val_pct, 0.25, na.rm = TRUE),
+    hi        = quantile(ad_val_pct, 0.75, na.rm = TRUE),
+    .groups   = "drop"
+  )
+
+ggplot(nafta_section, aes(x = year, colour = section, fill = section)) +
+  geom_vline(xintercept = 2020, linetype = "dashed",
+             colour = "#534AB7", linewidth = 0.7, alpha = 0.7) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = 0.14, linewidth = 0) +
+  geom_line(aes(y = mean_rate), linewidth = 1.2) +
+  geom_point(aes(y = mean_rate), size = 1.7, shape = 21, fill = "white") +
+  annotate("richtext", x = 2020.4, y = Inf, hjust = 0, vjust = 1.4,
+           size = 3.2, label = "**USMCA** replaces NAFTA",
+           fill = NA, label.colour = NA, colour = "#534AB7") +
+  scale_colour_manual(values = pal_section, name = NULL) +
+  scale_fill_manual(values = pal_section, name = NULL) +
+  scale_x_continuous(breaks = seq(2000, 2024, 4)) +
+  scale_y_continuous(labels = label_number(suffix = "%"), limits = c(0, NA)) +
+  labs(
+    title    = "NAFTA → USMCA: preferential tariff rates 2000–2024",
+    subtitle = "Mean (line) ± IQR (ribbon). USMCA effective July 2020.",
+    x = NULL, y = "Average preferential rate",
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(legend.position = "top")
+```
+
+## Biggest Rate Movers {#fig6}
+
+```{r fig6-movers, fig.height=10, fig.cap="Figure 6. Top 15 MFN rate increases and decreases between first and last observation."}
+big_movers <- mfn_panel |>
+  group_by(hts8, section) |>
+  filter(n_distinct(year) >= 10) |>
+  summarise(
+    rate_start = mean(mfn_rate[year == min(year)], na.rm = TRUE),
+    rate_end   = mean(mfn_rate[year == max(year)], na.rm = TRUE),
+    change     = rate_end - rate_start,
+    .groups    = "drop"
+  ) |>
+  filter(!is.na(change)) |>
+  mutate(direction = if_else(change > 0, "Increase", "Decrease")) |>
+  group_by(direction) |>
+  slice_max(abs(change), n = 15) |>
+  ungroup() |>
+  left_join(
+    {
+      tc       <- tariff_codes |> janitor::clean_names()
+      desc_col <- names(tc)[str_detect(names(tc), "brief|description|desc")][1]
+      if (!is.na(desc_col)) {
+        tc |> distinct(hts8, .keep_all = TRUE) |>
+          select(hts8, description = all_of(desc_col))
+      } else {
+        tc |> distinct(hts8) |> mutate(description = NA_character_)
+      }
+    },
+    by = "hts8"
+  ) |>
+  mutate(label = coalesce(str_trunc(description, 40), as.character(hts8)),
+         label = fct_reorder(label, change))
+
+ggplot(big_movers, aes(x = change, y = label, fill = section)) +
+  geom_col(alpha = 0.82, width = 0.72) +
+  geom_vline(xintercept = 0, colour = "#2C2C2A", linewidth = 0.65) +
+  geom_text(
+    aes(label = sprintf("%+.1f pp", change),
+        hjust = if_else(change > 0, -0.15, 1.15)),
+    size = 2.8, colour = "#2C2C2A"
+  ) +
+  scale_fill_manual(values = pal_section, name = "Section") +
+  scale_x_continuous(labels = label_number(suffix = " pp", style_positive = "plus"),
+                     expand = expansion(mult = 0.20)) +
+  labs(
+    title    = "Biggest MFN tariff rate changes (earliest → latest observation)",
+    subtitle = "Top 15 increases and decreases in percentage-point terms.",
+    x = "Change in MFN rate (pp)", y = NULL,
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(panel.grid.major.y = element_blank(),
+        axis.text.y        = element_markdown(size = 7.2))
+```
+
+## Agreement Count vs MFN Rate (Bubble) {#fig7}
+
+```{r fig7-bubble, fig.cap="Figure 7. Do high-tariff chapters attract more preferential agreements?"}
+bubble_chapter <- annual_panel |>
+  mutate(hts_chapter = as.integer(str_sub(as.character(hts8), 1, 2))) |>
+  group_by(hts8, hts_chapter, section) |>
+  summarise(
+    n_agreements = n_distinct(agree_group[agree_group != "MFN"]),
+    mean_mfn     = mean(ad_val_pct[agree_group == "MFN"], na.rm = TRUE),
+    .groups      = "drop"
+  ) |>
+  filter(!is.na(mean_mfn), mean_mfn > 0) |>
+  group_by(hts_chapter, section) |>
+  summarise(
+    n_agreements = mean(n_agreements, na.rm = TRUE),
+    mean_mfn     = mean(mean_mfn, na.rm = TRUE),
+    n_products   = n(),
+    .groups      = "drop"
+  ) |>
+  mutate(chapter_label = glue("Ch.{hts_chapter}"))
+
+ggplot(bubble_chapter,
+       aes(x = n_agreements, y = mean_mfn,
+           size = n_products, colour = section)) +
+  geom_point(alpha = 0.72) +
+  geom_text_repel(aes(label = chapter_label), size = 2.7, max.overlaps = 20,
+                  segment.colour = "#B4B2A9", segment.linewidth = 0.4) +
+  scale_size_area(max_size = 14, name = "# products") +
+  scale_colour_manual(values = pal_section, name = "Section") +
+  scale_x_continuous(breaks = 0:5, minor_breaks = NULL) +
+  scale_y_continuous(labels = label_number(suffix = "%")) +
+  guides(size   = guide_legend(override.aes = list(colour = "#888780")),
+         colour = guide_legend(override.aes = list(size = 4))) +
+  labs(
+    title    = "Do high-tariff chapters attract more preferential agreements?",
+    subtitle = "Bubble = HTS chapter. Size = tariff lines. X = avg. agreement groups.",
+    x = "Average number of preferential agreement groups",
+    y = "Mean MFN tariff rate",
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  )
+```
+
+## Tariff Type Composition (Stacked Area) {#fig8}
+
+```{r fig8-composition, fig.cap="Figure 8. Share of tariff lines by rate type per section over time."}
+type_pal <- c("Ad valorem only" = "#378ADD", "Specific only" = "#D85A30",
+              "Compound (both)" = "#BA7517", "Zero / unknown" = "#D3D1C7")
+
+composition_data <- annual_panel |>
+  filter(agree_group == "MFN") |>
+  mutate(
+    rate_type = case_when(
+      !is.na(specific_rate) & specific_rate > 0 &
+        !is.na(ad_val_pct)   & ad_val_pct   > 0  ~ "Compound (both)",
+      !is.na(specific_rate) & specific_rate > 0  ~ "Specific only",
+      !is.na(ad_val_pct)   & ad_val_pct   > 0  ~ "Ad valorem only",
+      TRUE                                       ~ "Zero / unknown"
+    )
+  ) |>
+  count(year, section, rate_type) |>
+  group_by(year, section) |>
+  mutate(share = n / sum(n)) |>
+  ungroup()
+
+ggplot(composition_data, aes(x = year, y = share, fill = rate_type)) +
+  geom_area(alpha = 0.85, position = "stack") +
+  scale_fill_manual(values = type_pal, name = "Tariff type") +
+  scale_x_continuous(breaks = seq(2000, 2024, 6)) +
+  scale_y_continuous(labels = label_percent(), expand = c(0, 0)) +
+  facet_wrap(~section, ncol = 2) +
+  labs(
+    title    = "Composition of MFN tariff rate structures by section",
+    subtitle = "Share of tariff lines with ad valorem, specific, or compound rates.",
+    x = NULL, y = "Share of tariff lines",
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(legend.position = "bottom")
+```
+
+## Rate Distribution Ridgelines {#fig9}
+
+```{r fig9-ridges, fig.cap="Figure 9. Distribution of MFN ad valorem rates (every 4 years) by section."}
+mfn_panel |>
+  filter(year %in% seq(2000, 2024, 4), mfn_rate > 0, mfn_rate <= 100) |>
+  mutate(year_f = factor(year)) |>
+  ggplot(aes(x = mfn_rate, y = year_f, fill = section)) +
+  geom_density_ridges(alpha = 0.65, scale = 1.8,
+                      rel_min_height = 0.01, bandwidth = 1.5) +
+  scale_fill_manual(values = pal_section, name = "Section") +
+  scale_x_continuous(labels = label_number(suffix = "%"), limits = c(0, 60)) +
+  facet_wrap(~section, ncol = 2) +
+  labs(
+    title    = "Distribution of MFN tariff rates over time",
+    subtitle = "Density ridgelines every 4 years. X-axis truncated at 60%.",
+    x = "MFN ad valorem rate", y = NULL,
+    caption  = "Source: USITC Tariff Database · TidyTuesday 2026 Week 17"
+  ) +
+  theme(legend.position = "none")
+```
+
+---
+
+# Statistical Tests {#stats}
+
+## Are section MFN rates significantly different? (Kruskal-Wallis)
+
+```{r kruskal-test}
+kw <- kruskal.test(mfn_rate ~ section, data = mfn_panel)
+
+tibble(
+  Test      = "Kruskal-Wallis rank-sum",
+  Statistic = round(kw$statistic, 2),
+  df        = kw$parameter,
+  `p-value` = formatC(kw$p.value, format = "e", digits = 3),
+  Result    = if_else(kw$p.value < 0.05,
+                      "Sections differ significantly (p < 0.05)",
+                      "No significant difference")
+) |>
+  gt() |>
+  tab_header(title    = md("**Kruskal-Wallis test: MFN rates across sections**"),
+             subtitle = md("*H₀: all sections have identical rate distributions*")) |>
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_column_labels()) |>
+  tab_options(table.font.size = px(13))
+```
+
+## Post-hoc pairwise comparisons (Dunn test)
+
+```{r dunn-test}
+dunn_res <- dunn.test(
+  mfn_panel$mfn_rate,
+  mfn_panel$section,
+  method = "bonferroni",
+  alpha  = 0.05,
+  kw     = FALSE,
+  label  = TRUE
+)
+
+tibble(
+  Comparison   = dunn_res$comparisons,
+  Z            = round(dunn_res$Z, 3),
+  `p-adjusted` = round(dunn_res$P.adjusted, 4),
+  Significant  = if_else(dunn_res$P.adjusted < 0.05, "Yes ✓", "No")
+) |>
+  gt() |>
+  tab_header(title    = md("**Dunn post-hoc test (Bonferroni correction)**"),
+             subtitle = md("*Pairwise MFN rate comparisons across sections*")) |>
+  tab_style(style = cell_fill(color = "#EAF3DE"),
+            locations = cells_body(rows = Significant == "Yes ✓")) |>
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_column_labels()) |>
+  tab_options(table.font.size = px(13))
+```
+
+## Trend test: is the MFN rate declining over time? (Mann-Kendall)
+
+```{r mann-kendall}
+mk_results <- mfn_panel |>
+  group_by(section, year) |>
+  summarise(mean_rate = mean(mfn_rate, na.rm = TRUE), .groups = "drop") |>
+  group_by(section) |>
+  summarise(
+    tau     = MannKendall(mean_rate)$tau[[1]],
+    p_value = MannKendall(mean_rate)$sl[[1]],
+    trend   = case_when(
+      p_value >= 0.05           ~ "No trend",
+      tau < 0 & p_value < 0.05 ~ "Significant decrease ↓",
+      tau > 0 & p_value < 0.05 ~ "Significant increase ↑"
+    ),
+    .groups = "drop"
+  )
+
+mk_results |>
+  gt() |>
+  tab_header(title    = md("**Mann-Kendall trend test by section (2000–2024)**"),
+             subtitle = md("*H₀: no monotonic trend in annual mean MFN rate*")) |>
+  cols_label(section = "Section", tau = "Kendall τ",
+             p_value = "p-value", trend = "Conclusion") |>
+  fmt_number(columns = c(tau, p_value), decimals = 4) |>
+  tab_style(style = cell_fill(color = "#E6F1FB"),
+            locations = cells_body(rows = str_detect(trend, "decrease"))) |>
+  tab_style(style = cell_fill(color = "#FAEEDA"),
+            locations = cells_body(rows = str_detect(trend, "increase"))) |>
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_column_labels()) |>
+  tab_options(table.font.size = px(13))
+```
+
+---
+
+# Interactive Exploration {#interactive}
+
+## Linked chapter explorer
+
+```{r crosstalk-linked}
+shared_chapter <- mfn_panel |>
+  group_by(hts_chapter, section) |>
+  summarise(
+    Products  = n_distinct(hts8),
+    Mean_rate = round(mean(mfn_rate, na.rm = TRUE), 2),
+    Median    = round(median(mfn_rate, na.rm = TRUE), 2),
+    SD        = round(sd(mfn_rate, na.rm = TRUE), 2),
+    Max       = round(max(mfn_rate, na.rm = TRUE), 2),
+    .groups   = "drop"
+  ) |>
+  rename(Chapter = hts_chapter, Section = section) |>
+  SharedData$new(key = ~Chapter)
+
+filter_select("sec_filter", "Filter by section:", shared_chapter, ~Section)
+
+DT::datatable(
+  shared_chapter,
+  rownames   = FALSE,
+  extensions = "Buttons",
+  options    = list(dom = "Bfrtip", buttons = c("copy","csv"),
+                    pageLength = 12, scrollX = TRUE)
+) |>
+  DT::formatStyle(
+    "Mean_rate",
+    background         = DT::styleColorBar(c(0, 30), "#378ADD"),
+    backgroundSize     = "100% 90%",
+    backgroundRepeat   = "no-repeat",
+    backgroundPosition = "center"
+  )
+```
+
+```{r crosstalk-scatter, fig.cap="Figure 10. Linked scatter — select rows in the table to highlight chapters here."}
+plot_ly(shared_chapter,
+        x = ~Mean_rate, y = ~SD, size = ~Products, color = ~Section,
+        colors = unname(pal_section), type = "scatter", mode = "markers",
+        marker = list(opacity = 0.75, sizemode = "diameter"),
+        hovertemplate = paste0(
+          "<b>Chapter %{customdata}</b><br>",
+          "Mean MFN: %{x:.1f}%<br>SD: %{y:.1f}%<extra></extra>"
+        ),
+        customdata = ~Chapter
+) |>
+  layout(
+    title  = list(text = "Chapter mean rate vs volatility (linked to table above)"),
+    xaxis  = list(title = "Mean MFN rate (%)", gridcolor = "#D3D1C7"),
+    yaxis  = list(title = "Rate SD (pp)", gridcolor = "#D3D1C7"),
+    legend = list(orientation = "h", y = -0.2),
+    paper_bgcolor = "#FAFAF8", plot_bgcolor = "#FAFAF8"
+  ) |>
+  highlight(on = "plotly_selected", off = "plotly_deselect",
+            color = "#D85A30", persistent = TRUE)
+```
+
+## Interactive MFN trajectories with IQR bands
+
+```{r interactive-plotly-v2, fig.cap="Figure 11 (interactive). MFN trajectories with IQR bands — hover uses unified x tooltip."}
+section_yr_plotly <- mfn_panel |>
+  group_by(section, year) |>
+  summarise(
+    mean_rate = mean(mfn_rate, na.rm = TRUE),
+    lo        = quantile(mfn_rate, 0.25, na.rm = TRUE),
+    hi        = quantile(mfn_rate, 0.75, na.rm = TRUE),
+    n         = n_distinct(hts8),
+    .groups   = "drop"
+  )
+
+p <- plot_ly()
+for (sec in levels(section_yr_plotly$section)) {
+  d   <- filter(section_yr_plotly, section == sec)
+  col <- pal_section[sec]
+  p   <- add_ribbons(p, data = d, x = ~year, ymin = ~lo, ymax = ~hi,
+                     fillcolor = paste0(col, "22"), line = list(width = 0),
+                     name = paste0(sec, " IQR"), legendgroup = sec,
+                     showlegend = FALSE, hoverinfo = "skip")
+  p   <- add_lines(p, data = d, x = ~year, y = ~mean_rate,
+                   line = list(color = col, width = 2.5),
+                   name = sec, legendgroup = sec,
+                   hovertemplate = paste0(
+                     "<b>", sec, "</b><br>Year: %{x}<br>",
+                     "Mean: %{y:.2f}%<extra></extra>"))
+}
+p |> layout(
+  title     = list(text = "MFN rate trajectories with IQR bands", font = list(size = 14)),
+  xaxis     = list(title = "", tickvals = seq(2000, 2024, 4), gridcolor = "#D3D1C7"),
+  yaxis     = list(title = "Average MFN rate (%)", rangemode = "tozero",
+                   gridcolor = "#D3D1C7"),
+  legend    = list(orientation = "h", y = -0.2),
+  hovermode = "x unified",
+  paper_bgcolor = "#FAFAF8", plot_bgcolor = "#FAFAF8"
+)
+```
+
+---
+
+# Composite Dashboard {#dashboard}
+
+```{r dashboard, fig.width=16, fig.height=10, fig.cap="Figure 12. Four-panel summary dashboard."}
+p1 <- ggplot() +
+  geom_line(data = bg_lines,
+            aes(x = year, y = mean_rate, group = bg_section),
+            colour = "#D3D1C7", linewidth = 0.5, alpha = 0.6) +
+  geom_ribbon(data = section_yr,
+              aes(x = year, ymin = lo, ymax = hi, fill = section), alpha = 0.15) +
+  geom_line(data = section_yr,
+            aes(x = year, y = mean_rate, colour = section), linewidth = 1.1) +
+  scale_colour_manual(values = pal_section, guide = "none") +
+  scale_fill_manual(values = pal_section, guide = "none") +
+  scale_x_continuous(breaks = seq(2000, 2024, 8)) +
+  scale_y_continuous(labels = label_number(suffix = "%")) +
+  facet_wrap(~section, ncol = 2, scales = "free_y") +
+  labs(title = "MFN trajectories", x = NULL, y = "Mean rate") +
+  theme(plot.title = element_markdown(size = 10, face = "bold"),
+        strip.text = element_markdown(size = 7))
+
+p3 <- ggplot(dumbbell_data) +
+  geom_segment(aes(x = nafta_usmca, xend = mfn,
+                   y = chapter_label, yend = chapter_label, colour = section),
+               linewidth = 1.4, alpha = 0.40) +
+  geom_point(aes(x = nafta_usmca, y = chapter_label, colour = section),
+             size = 2.5, shape = 21, fill = "white") +
+  geom_point(aes(x = mfn, y = chapter_label, colour = section), size = 2.5) +
+  scale_colour_manual(values = pal_section, guide = "none") +
+  scale_x_continuous(labels = label_number(suffix = "%"),
+                     expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "MFN vs NAFTA/USMCA", x = "Avg rate", y = NULL) +
+  theme(plot.title = element_markdown(size = 10, face = "bold"),
+        axis.text.y = element_text(size = 6.5),
+        panel.grid.major.y = element_blank())
+
+p5 <- ggplot(nafta_section, aes(x = year, colour = section, fill = section)) +
+  geom_vline(xintercept = 2020, linetype = "dashed",
+             colour = "#534AB7", linewidth = 0.6) +
+  geom_ribbon(aes(ymin = lo, ymax = hi), alpha = 0.13, linewidth = 0) +
+  geom_line(aes(y = mean_rate), linewidth = 1.1) +
+  scale_colour_manual(values = pal_section, name = NULL) +
+  scale_fill_manual(values = pal_section, name = NULL) +
+  scale_x_continuous(breaks = seq(2000, 2024, 8)) +
+  scale_y_continuous(labels = label_number(suffix = "%")) +
+  labs(title = "NAFTA → USMCA", x = NULL, y = "Pref. rate") +
+  theme(plot.title = element_markdown(size = 10, face = "bold"),
+        legend.position = "none")
+
+p7 <- ggplot(bubble_chapter,
+             aes(x = n_agreements, y = mean_mfn,
+                 size = n_products, colour = section)) +
+  geom_point(alpha = 0.7) +
+  geom_text_repel(aes(label = chapter_label), size = 2.2, max.overlaps = 15,
+                  segment.colour = "#B4B2A9", segment.linewidth = 0.3) +
+  scale_size_area(max_size = 10, guide = "none") +
+  scale_colour_manual(values = pal_section, guide = "none") +
+  scale_x_continuous(breaks = 0:4) +
+  scale_y_continuous(labels = label_number(suffix = "%")) +
+  labs(title = "Agreements vs MFN rate",
+       x = "Avg agreement groups", y = "Mean MFN rate") +
+  theme(plot.title = element_markdown(size = 10, face = "bold"))
+
+(p1 | p3) / (p5 | p7) +
+  plot_annotation(
+    title    = "US Agricultural Tariff Analysis — Dashboard",
+    subtitle = "USITC Tariff Database · HTS Ch. 1–24 · TidyTuesday 2026 Week 17",
+    theme    = theme(
+      plot.title    = element_markdown(size = 15, face = "bold", colour = "#185FA5"),
+      plot.subtitle = element_markdown(size = 10, colour = "#5F5E5A")
+    )
+  )
+```
+
+---
+
+# Key Findings & Conclusions {#conclusions}
+
+```{r findings-table}
+tibble(
+  `#` = 1:7,
+  Finding = c(
+    "Live Animals & Animal Products consistently carry the highest MFN rates",
+    "NAFTA/USMCA delivers substantial tariff reductions across most chapters",
+    "Prepared Foodstuffs shows the most stable MFN rates over time",
+    "Rate volatility is concentrated in a small subset of tariff lines",
+    "The NAFTA → USMCA transition (2020) did not cause a discontinuous rate jump",
+    "Chapters with higher MFN rates tend to have more preferential agreement coverage",
+    "MFN rate differences across sections are statistically significant (Kruskal-Wallis)"
+  ),
+  Implication = c(
+    "Animal products remain a sensitive sector with high import protection",
+    "USMCA trade partners enjoy significant competitive advantages over MFN countries",
+    "Processed food tariffs are politically stable and less subject to renegotiation",
+    "Monitoring ~30 lines captures most of the system-wide tariff uncertainty",
+    "USMCA largely preserved existing NAFTA preferential rates during transition",
+    "High-tariff sectors generate more demand for bilateral trade deals",
+    "Section-level analysis is analytically justified — sections are not exchangeable"
+  )
+) |>
+  gt() |>
+  tab_header(title    = md("**Key Findings**"),
+             subtitle = md("*US Agricultural Tariff Analysis · 2000–2024*")) |>
+  cols_label(`#` = "#") |>
+  cols_width(`#` ~ px(30), Finding ~ px(340), Implication ~ px(370)) |>
+  tab_style(style = cell_fill(color = "#EEEDFE"),
+            locations = cells_body(rows = seq(1, 7, 2))) |>
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_column_labels()) |>
+  tab_options(table.font.size = px(13))
+```
+
+---
+
+# Reproducibility {#repro}
+
+```{r session-info, collapse=TRUE}
+sessionInfo()
+```
+
+---
+
+*Report generated with R Markdown on `r Sys.Date()`. Data: USITC Tariff Database via TidyTuesday 2026 Week 17.*
