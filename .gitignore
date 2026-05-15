@@ -1,0 +1,20 @@
+# R cache folders — large, not needed on GitHub
+us_agricultural_tariffs_cache/
+us_agricultural_tariffs_v2_cache/
+us_agricultural_tariffs_files/
+us_agricultural_tariffs_v2_files/
+
+# R project file (optional — include if you want)
+*.Rproj.user/
+
+# Temporary R files
+.Rhistory
+.RData
+.Rproj.user
+
+# Large rendered HTML (optional — comment out if you want to share)
+# us_agricultural_tariffs.html
+# us_agricultural_tariffs_v2.html
+
+# Outputs folder if used as scratch
+outputs/
