@@ -5,10 +5,7 @@
 [![Quarto](https://img.shields.io/badge/Quarto-HTML%20%7C%20PDF-75AADB?style=flat-square)](https://quarto.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-> **Author:** Erick K Yegon, PhD
-> **Email:** keyegon@gmail.com
-> **ORCID:** [0000-0002-7055-4848](https://orcid.org/0000-0002-7055-4848)
-> **Twitter/X:** [@eyegonk](https://twitter.com/eyegonk)
+Author: Erick Kiprotich Yegon, epidemiologist and data scientist (real-world evidence, HEOR, causal inference) · Portfolio: https://erickyegon.github.io · LinkedIn: https://linkedin.com/in/erickyegon
 
 ---
 
@@ -300,4 +297,4 @@ Please credit both sources when reusing.
 
 *Rendered with [Quarto](https://quarto.org) · R 4.6.0 · ggplot2 · patchwork · plotly · gt*
 
-*© 2026 Erick K Yegon, PhD · keyegon@gmail.com · [@eyegonk](https://twitter.com/eyegonk)*
+*© 2026 Erick Kiprotich Yegon*
